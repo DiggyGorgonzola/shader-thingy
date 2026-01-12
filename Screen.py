@@ -8,6 +8,8 @@ class Screen():
         self.pixels = numpy.zeros((self.resolution[0], self.resolution[1], 3), dtype=numpy.uint8)
         self.age = 0
         self.ts = self.resolution[0]*self.resolution[1]-1
+        self.rx = resolution[0]
+        self.ry = resolution[1]
         self.bg_image = None
         self.max_fps = max_fps
         self.name = name
@@ -61,6 +63,13 @@ class Screen():
         self.pixels[:, :, 2] = func(self.pixels[:, :, 2], b)
 
         self.pixels = self.pixels.astype(numpy.uint8)
+    def draw_line(self,p1, p2, r,g,b):
+        distance = math.ceil(math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2))
+        L=[(p1[0]*(1-i/distance) + p2[0]*i/distance,p1[1]*(1-i/distance) + p2[1]*i/distance) for i in range(distance)]
+        for i in range(distance):
+            self.pixels[int(L[i][0]), int(L[i][1]),0] = r
+            self.pixels[int(L[i][0]), int(L[i][1]),1] = g
+            self.pixels[int(L[i][0]), int(L[i][1]),1] = g
     def run(self, function=lambda: None, *fargs, **fkargs):
         while all([event.type != pygame.QUIT for event in pygame.event.get()]):
             if self.bg_image:
@@ -72,6 +81,6 @@ class Screen():
             pygame.display.flip()
             self.clock_step(self.max_fps)
 s = Screen(resolution=(230,230),max_fps=1)
-s.set_bg_image(r"C:/Users/bendo/Downloads/image.png")
-
-s.run(s.affect_screen, 1,1,1,func=lambda x,y:(2*x//255)*255)
+def guh():
+    s.draw_line((random.randrange(0, s.rx),random.randrange(0, s.ry)),(random.randrange(0, s.rx),random.randrange(0, s.ry)),255,0,0)
+s.run(guh)
