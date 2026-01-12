@@ -1,4 +1,4 @@
-import math, pygame, numpy,random,os
+import math, pygame, numpy,random,os,time
 pygame.init()
 class Screen():
     def __init__(self,resolution=(800,480), max_fps=300, name="Screen"):
@@ -99,6 +99,12 @@ for i in range(len(L)):
     L[i].connections.append(L[i-1])
     L[i].connections.append(L[(i+1)%len(L)])
 s = Screen(resolution=(230,230),max_fps=1)
-for i in L:
-    i.draw(s)
-s.run()
+x = 0
+def guh():
+    s.set_bg(0, 0, 0)
+    L = [Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0))]
+    for i in L:
+        i.draw(s)
+    for i in L:
+        i.drawn = False
+s.run(guh)
