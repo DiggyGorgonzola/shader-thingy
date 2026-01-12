@@ -80,7 +80,25 @@ class Screen():
             pygame.surfarray.blit_array(self.screen, self.pixels)
             pygame.display.flip()
             self.clock_step(self.max_fps)
+
+class Point():
+    def __init__(self, posx, posy, color,connections=None, drawn=False):
+        self.posx = posx
+        self.posy = posy
+        self.color = color
+        self.connections = connections or []
+        self.drawn = drawn
+    def draw(self, screen):
+        if not self.drawn:
+            screen.draw_pixel(self.posx, self.posy, *self.color)
+            for i in self.connections:
+                screen.draw_line((self.posx,self.posy),(i.posx,i.posy), *self.color)
+            self.drawn = not self.drawn
+L = [Point(200, 200, (255,0,0)),Point(100, 200, (255,0,0)),Point(50, 200, (255,0,0)),Point(200, 220, (255,0,0)),Point(100, 100, (255,0,0))]
+for i in range(len(L)):
+    L[i].connections.append(L[i-1])
+    L[i].connections.append(L[(i+1)%len(L)])
 s = Screen(resolution=(230,230),max_fps=1)
-def guh():
-    s.draw_line((random.randrange(0, s.rx),random.randrange(0, s.ry)),(random.randrange(0, s.rx),random.randrange(0, s.ry)),255,0,0)
-s.run(guh)
+for i in L:
+    i.draw(s)
+s.run()
