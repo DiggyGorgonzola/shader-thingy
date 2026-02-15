@@ -104,6 +104,29 @@ class Screen():
                         self.pixels[y, x, 0] = outline[0]
                         self.pixels[y, x, 1] = outline[1]
                         self.pixels[y, x, 2] = outline[2]
+    def draw_circle(self,radius, center, color, thickness, fill=None):
+        x1, y1 = center
+        r,g,b = color
+        outer_sq = radius * radius
+        inner_sq = (radius - thickness) * (radius - thickness)
+        min_x = max(0, int(x1 - radius))
+        max_x = min(self.rx, int(x1 + radius))
+        min_y = max(0, int(y1 - radius))
+        max_y = min(self.ry, int(y1 + radius))
+        for y in range(min_y, max_y):
+            for x in range(min_x,max_x):
+                dx = x - x1
+                dy = y - y1
+                dist_sq = dx*dx + dy*dy
+                if dist_sq <= outer_sq:
+                    self.pixels[y, x, 0] = fill[0]
+                    self.pixels[y, x, 1] = fill[1]
+                    self.pixels[y, x, 2] = fill[2]
+                if inner_sq <= dist_sq <= outer_sq:
+                    self.pixels[y, x, 0] = r
+                    self.pixels[y, x, 1] = g
+                    self.pixels[y, x, 2] = b
+
     def run(self, function=lambda: None, *fargs, **fkargs):
         while all([event.type != pygame.QUIT for event in pygame.event.get()]):
             if self.bg_image:
@@ -130,6 +153,6 @@ x = 0
 def guh():
     s.set_bg(0, 0, 0)
     x=s.interpolate((0,0), (400,400), 0, 100, i_mode=lambda x:x**2)
-    y=s.interpolate((200,500), (23,80), 0, 100, i_mode=lambda x:(math.sin(x*math.pi*2)+1)/2)
-    s.draw_segment(y,x,255,0,0,2, outline=(255,255,255), outline_thickness=5)
+    y=s.interpolate((200,500), (23,80), 0, 500, i_mode=lambda x:(math.sin(x*math.pi*10)+1)/2)
+    s.draw_circle(20,y,(100,0,0),5, fill=(255,0,0))
 s.run(guh)
