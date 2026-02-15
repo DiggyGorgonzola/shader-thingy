@@ -15,7 +15,7 @@ class Screen():
         self.name = name
         pygame.display.set_caption(self.name)
     def clock_step(self, step):
-        self.age += step
+        self.age += 1
         self.clock.tick(step)
 
     def set_bg_image(self, img):
@@ -69,7 +69,41 @@ class Screen():
         for i in range(distance):
             self.pixels[int(L[i][0]), int(L[i][1]),0] = r
             self.pixels[int(L[i][0]), int(L[i][1]),1] = g
-            self.pixels[int(L[i][0]), int(L[i][1]),1] = g
+            self.pixels[int(L[i][0]), int(L[i][1]),2] = b
+    def draw_segment(self, p1, p2, r, g, b, thickness, outline=False, outline_thickness=0):
+
+        x1, y1 = p1
+        x2, y2 = p2
+
+        dx = x2 - x1
+        dy = y2 - y1
+        length_sq = dx*dx + dy*dy
+
+        if length_sq == 0:
+            return
+
+        min_x = max(0, int(min(x1, x2) - thickness - outline_thickness))
+        max_x = min(self.rx, int(max(x1, x2) + thickness + outline_thickness))
+        min_y = max(0, int(min(y1, y2) - thickness - outline_thickness))
+        max_y = min(self.ry, int(max(y1, y2) + thickness + outline_thickness))
+
+        for y in range(min_y, max_y):
+            for x in range(min_x, max_x):
+                t = ((x - x1)*dx + (y - y1)*dy) / length_sq
+                t = max(0, min(1, t))
+                proj_x = x1 + t*dx
+                proj_y = y1 + t*dy
+                dist_sq = (x - proj_x)**2 + (y - proj_y)**2
+
+                if dist_sq <= thickness*thickness:
+                    self.pixels[y, x, 0] = r
+                    self.pixels[y, x, 1] = g
+                    self.pixels[y, x, 2] = b
+                if outline is not False:
+                    if dist_sq - thickness**2 <= outline_thickness**2 and dist_sq > thickness*thickness:
+                        self.pixels[y, x, 0] = outline[0]
+                        self.pixels[y, x, 1] = outline[1]
+                        self.pixels[y, x, 2] = outline[2]
     def run(self, function=lambda: None, *fargs, **fkargs):
         while all([event.type != pygame.QUIT for event in pygame.event.get()]):
             if self.bg_image:
@@ -80,31 +114,22 @@ class Screen():
             pygame.surfarray.blit_array(self.screen, self.pixels)
             pygame.display.flip()
             self.clock_step(self.max_fps)
+    def random_pixel(self):
+        return (random.randrange(0,self.rx),random.randrange(0,self.ry))
+    def interpolate(self, p1, p2, t_start, t_end, i_mode=lambda x:x*2):
+        a,b = p1
+        c,d = p2
 
-class Point():
-    def __init__(self, posx, posy, color,connections=None, drawn=False):
-        self.posx = posx
-        self.posy = posy
-        self.color = color
-        self.connections = connections or []
-        self.drawn = drawn
-    def draw(self, screen):
-        if not self.drawn:
-            screen.draw_pixel(self.posx, self.posy, *self.color)
-            for i in self.connections:
-                screen.draw_line((self.posx,self.posy),(i.posx,i.posy), *self.color)
-            self.drawn = not self.drawn
-L = [Point(200, 200, (255,0,0)),Point(100, 200, (255,0,0)),Point(50, 200, (255,0,0)),Point(200, 220, (255,0,0)),Point(100, 100, (255,0,0))]
-for i in range(len(L)):
-    L[i].connections.append(L[i-1])
-    L[i].connections.append(L[(i+1)%len(L)])
-s = Screen(resolution=(230,230),max_fps=1)
+        clamp = lambda time:0 if time == t_start else 0 if (time - t_start) / (t_end - t_start) < 0 else 1 if (time - t_start) / (t_end - t_start) > 1 else (time - t_start) / (t_end - t_start)
+        g = i_mode(clamp(self.age))
+        return (a*(1-g)+c*g,b*(1-g)+d*g)
+
+
+s = Screen(resolution=(800,600),max_fps=60)
 x = 0
 def guh():
     s.set_bg(0, 0, 0)
-    L = [Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0)),Point(random.randrange(s.rx-1), random.randrange(s.ry-1), (255,0,0))]
-    for i in L:
-        i.draw(s)
-    for i in L:
-        i.drawn = False
+    x=s.interpolate((0,0), (400,400), 0, 100, i_mode=lambda x:x**2)
+    y=s.interpolate((200,500), (23,80), 0, 100, i_mode=lambda x:(math.sin(x*math.pi*2)+1)/2)
+    s.draw_segment(y,x,255,0,0,2, outline=(255,255,255), outline_thickness=5)
 s.run(guh)
