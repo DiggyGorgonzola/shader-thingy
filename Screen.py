@@ -1,7 +1,10 @@
 import math, pygame, numpy,random,os,time
+from screeninfo import get_monitors
 pygame.init()
+for m in get_monitors():
+    print(str(m))
 class Screen():
-    def __init__(self,resolution=(800,480), max_fps=300, name="Screen"):
+    def __init__(self,resolution, max_fps=300, name="Screen", show_fps=True, bg_col=(0,0,0)):
         self.resolution = resolution
         self.screen = pygame.display.set_mode((self.resolution[0], self.resolution[1]))
         self.clock = pygame.time.Clock()
@@ -11,9 +14,146 @@ class Screen():
         self.rx = resolution[0]
         self.ry = resolution[1]
         self.bg_image = None
+        self.bg_col = bg_col
         self.max_fps = max_fps
         self.name = name
+        self.elements = []
+        self.show_fps = show_fps
+        self.Arial = pygame.font.SysFont('Arial', 15)
         pygame.display.set_caption(self.name)
+    def random_pixel(self):
+        return (random.randrange(self.rx),random.randrange(self.ry))
+    def bresenham_line(p1, p2, d=1):
+        x1,y1 = p1
+        x2,y2 = p2
+        dx,dy = abs(x2-x1), abs(y2-y1)
+        xs    = d if x1 < x2 else -d
+        ys    = d if y1 < y2 else -d
+        x     = x1
+        y     = y1
+
+        yield (x,y)
+
+        if dx > dy: # Line is more horizontal (slope <= 1)
+            p = 2 * dy - dx
+            for _ in range(math.floor(dx)):
+                if p >= 0:
+                    y += ys/d
+                    p -= 2 * dx
+                x += xs/d
+                p += 2 * dy
+                yield (x, y)
+        else: # Line is more vertical (slope > 1)
+            p = 2 * dx - dy
+            for _ in range(math.floor(dy)):
+                if p >= 0:
+                    x += xs/d
+                    p -= 2 * dy
+                y += ys/d
+                p += 2 * dx
+                yield (x, y)
+    class Pixel():
+        def draw(screen,pos,color):
+            x,y = pos
+            x,y=int(x),int(y)
+            r,g,b = color
+            if 0 <= x < screen.rx and 0 <= y < screen.ry:
+                screen.pixels[x, y, 0] = r
+                screen.pixels[x, y, 1] = g
+                screen.pixels[x, y, 2] = b
+        def color_at(screen, pos):
+            x,y=pos
+            return (screen.pixels[x,y,0],screen.pixels[x,y,1],screen.pixels[x,y,2])
+    class reset():
+        def __init__(self, screen, age):
+            age = age if isinstance(age, list) else [age]
+            if screen.age in age:
+                for x in range(screen.rx):
+                    for y in range(screen.ry):
+                        Screen.Pixel.draw(s, (x,y),screen.bg_col)
+    class circle():
+        def __init__(self, screen, age, radius, center, color=(255,255,255), aliasing=False):
+            self.screen = screen
+            self.radius, self.center = radius, center
+            self.color = color
+            self.age = age if isinstance(age, list) else [age]
+            self.aliasing = aliasing
+        def draw(self):
+            if self.screen.age in self.age:
+                x1, y1 = self.center
+                outer_sq = self.radius ** 2
+
+                min_x = max(0, int(x1 - self.radius))
+                max_x = min(self.screen.rx, int(x1 + self.radius))
+                min_y = max(0, int(y1 - self.radius))
+                max_y = min(self.screen.ry, int(y1 + self.radius))
+                for y in range(min_y, max_y):
+                    for x in range(min_x,max_x):
+                        dx = x - x1
+                        dy = y - y1
+                        dist_sq = dx*dx + dy*dy
+                        if dist_sq <= outer_sq:
+                            if not self.aliasing:
+                                Screen.Pixel.draw(self.screen, (x,y),self.color)
+                            elif dist_sq <= outer_sq:
+                                alpha = (self.radius - math.sqrt(dist_sq)) / 3
+                                alpha = 0 if alpha < 0 else 1 if alpha > 1 else alpha
+                                blended = self._blend_pixel(self.screen, (x,y), alpha)
+                                Screen.Pixel.draw(self.screen, (x,y), blended)
+        def _blend_pixel(self, screen, pos, alpha):
+            bg = self.screen.Pixel.color_at(screen, pos)
+
+            r = int(self.color[0] * alpha + bg[0] * (1 - alpha))
+            g = int(self.color[1] * alpha + bg[1] * (1 - alpha))
+            b = int(self.color[2] * alpha + bg[2] * (1 - alpha))
+            return (r,g,b)
+    class line():
+        def __init__(self, screen, age, p1,p2, color, thickness):
+            self.screen = screen
+            self.age = age if isinstance(age, list) else [age]
+            self.p1, self.p2 = p1, p2
+            self.color = color
+            self.thickness = thickness
+            screen.elements.append(self)
+        def draw(self):
+            if self.screen.age in self.age:
+                for i in list(Screen.bresenham_line(self.p1, self.p2, self.thickness)):
+                    if self.thickness in [0,1]:
+                        Screen.Pixel.draw(s,i,self.color)
+                    else:
+                        Screen.circle(self.screen, self.screen.age, self.thickness, i, self.color).draw()
+    class animate():
+        def ease_mode(ease_mode):
+            if ease_mode.upper().replace(" ", "")=="SINE":
+                return lambda x:(-math.cos(x*math.pi)+1)/2
+            elif ease_mode.upper().replace(" ", "")=="LINEAR":
+                return lambda x:x
+            
+        def animate(screen, element, t_start, t_end, ease="SINE", full=False):
+            if element.__class__ == Screen.line:
+                a,b = element.p1
+                c,d = element.p2
+                dg = .1
+                t_start,t_end = t_start[0] if isinstance(t_start, list) else t_start,t_end[0] if isinstance(t_end, list) else t_end
+                clamp = lambda time:0 if time == t_start else 0 if (time - t_start) / (t_end - t_start) < 0 else 1 if (time - t_start) / (t_end - t_start) > 1 else (time - t_start) / (t_end - t_start)
+                g = Screen.animate.ease_mode(ease)(clamp(screen.age))
+                DIGGY = g-dg
+                Screen.line(
+
+                    screen, 
+                    [_ for _ in range(t_start, t_end)],
+                    element.p1, 
+                    (a*(1-g)+c*g,b*(1-g)+d*g), 
+                    element.color,
+                    element.thickness
+                    ).draw()
+
+        def interpolate(screen, p1, p2, t_start, t_end, ease="SINE"):
+            a,b = p1
+            c,d = p2
+            clamp = lambda time:0 if time == t_start else 0 if (time - t_start) / (t_end - t_start) < 0 else 1 if (time - t_start) / (t_end - t_start) > 1 else (time - t_start) / (t_end - t_start)
+            g = Screen.animate.ease_mode(ease)(clamp(screen.age))
+            return (a*(1-g)+c*g,b*(1-g)+d*g)
     def clock_step(self, step):
         self.age += 1
         self.clock.tick(step)
@@ -63,77 +203,6 @@ class Screen():
         self.pixels[:, :, 2] = func(self.pixels[:, :, 2], b)
 
         self.pixels = self.pixels.astype(numpy.uint8)
-    def draw_line(self,p1, p2, r,g,b):
-        distance = math.ceil(math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2))
-        L=[(p1[0]*(1-i/distance) + p2[0]*i/distance,p1[1]*(1-i/distance) + p2[1]*i/distance) for i in range(distance)]
-        for i in range(distance):
-            self.pixels[int(L[i][0]), int(L[i][1]),0] = r
-            self.pixels[int(L[i][0]), int(L[i][1]),1] = g
-            self.pixels[int(L[i][0]), int(L[i][1]),2] = b
-    def draw_segment(self, p1, p2, r, g, b, thickness, outline=False, outline_thickness=0):
-
-        x1, y1 = p1
-        x2, y2 = p2
-
-        dx = x2 - x1
-        dy = y2 - y1
-        length_sq = dx*dx + dy*dy
-
-        if length_sq == 0:
-            return
-
-        min_x = max(0, int(min(x1, x2) - thickness - outline_thickness))
-        max_x = min(self.rx, int(max(x1, x2) + thickness + outline_thickness))
-        min_y = max(0, int(min(y1, y2) - thickness - outline_thickness))
-        max_y = min(self.ry, int(max(y1, y2) + thickness + outline_thickness))
-
-        for y in range(min_y, max_y):
-            for x in range(min_x, max_x):
-                t = ((x - x1)*dx + (y - y1)*dy) / length_sq
-                t = max(0, min(1, t))
-                proj_x = x1 + t*dx
-                proj_y = y1 + t*dy
-                dist_sq = (x - proj_x)**2 + (y - proj_y)**2
-
-                if dist_sq <= thickness*thickness:
-                    self.pixels[y, x, 0] = r
-                    self.pixels[y, x, 1] = g
-                    self.pixels[y, x, 2] = b
-                if outline is not False:
-                    if dist_sq - thickness**2 <= outline_thickness**2 and dist_sq > thickness*thickness:
-                        self.pixels[y, x, 0] = outline[0]
-                        self.pixels[y, x, 1] = outline[1]
-                        self.pixels[y, x, 2] = outline[2]
-    def draw_circle(self,radius, center, color, thickness, fill=None):
-        x1, y1 = center
-        r,g,b = color
-        outer_sq = radius * radius
-        inner_sq = (radius - thickness) * (radius - thickness)
-        min_x = max(0, int(x1 - radius))
-        max_x = min(self.rx, int(x1 + radius))
-        min_y = max(0, int(y1 - radius))
-        max_y = min(self.ry, int(y1 + radius))
-        for y in range(min_y, max_y):
-            for x in range(min_x,max_x):
-                dx = x - x1
-                dy = y - y1
-                dist_sq = dx*dx + dy*dy
-                if dist_sq <= outer_sq:
-                    self.pixels[y, x, 0] = fill[0]
-                    self.pixels[y, x, 1] = fill[1]
-                    self.pixels[y, x, 2] = fill[2]
-                if inner_sq <= dist_sq <= outer_sq:
-                    self.pixels[y, x, 0] = r
-                    self.pixels[y, x, 1] = g
-                    self.pixels[y, x, 2] = b
-    def draw_regular_polygon(self,radius, center, sidecount, color, thickness,angle=0):
-        x1, y1 = center
-        r,g,b=color
-        L=[]
-        for i in range(sidecount):
-            L.append((radius*math.cos(i/sidecount * 2*math.pi+angle)+x1,radius*math.sin(i/sidecount * 2*math.pi+angle)+y1))
-        for i in range(len(L)):
-            self.draw_segment(L[i],L[i-1],r,g,b,thickness=thickness)
 
     def run(self, function=lambda: None, *fargs, **fkargs):
         while all([event.type != pygame.QUIT for event in pygame.event.get()]):
@@ -143,25 +212,20 @@ class Screen():
                 self.bg_image = None
             function(*fargs, **fkargs)
             pygame.surfarray.blit_array(self.screen, self.pixels)
+            if self.show_fps:
+                fps = self.clock.get_fps()
+                self.screen.blit(self.Arial.render(f"FPS: {round(fps, 2)}, AGE: {self.age}", True, (255,255,255)), (0,0))
             pygame.display.flip()
             self.clock_step(self.max_fps)
-    def random_pixel(self):
-        return (random.randrange(0,self.rx),random.randrange(0,self.ry))
-    def interpolate(self, p1, p2, t_start, t_end, i_mode=lambda x:x*2):
-        a,b = p1
-        c,d = p2
-
-        clamp = lambda time:0 if time == t_start else 0 if (time - t_start) / (t_end - t_start) < 0 else 1 if (time - t_start) / (t_end - t_start) > 1 else (time - t_start) / (t_end - t_start)
-        g = i_mode(clamp(self.age))
-        return (a*(1-g)+c*g,b*(1-g)+d*g)
 
 
-s = Screen(resolution=(800,600),max_fps=60)
-x = 0
+s = Screen(resolution=(1920,1080),max_fps=60, bg_col=(0,0,0), show_fps=True)
+
+L = []
+for i in range(10):
+    L.append(Screen.circle(s,random.randrange(0,300),random.randrange(0,100),s.random_pixel(),(255,0,0),aliasing=True))
+
 def guh():
-    s.set_bg(0, 0, 0)
-    x=s.interpolate((0,0), (400,400), 0, 100, i_mode=lambda x:x**2)
-    y=s.interpolate((200,500), (23,80), 0, 500, i_mode=lambda x:(math.sin(x*math.pi*10)+1)/2)
-    q=s.age/10
-    s.draw_regular_polygon(200,(300,300),5,(255,0,0),5,q)
+    for i in L:
+        i.draw()
 s.run(guh)
