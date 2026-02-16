@@ -2,17 +2,17 @@ import math, pygame, numpy,random,os,time
 from screeninfo import get_monitors
 pygame.init()
 for m in get_monitors():
-    print(str(m))
+    print(m.width)
 class Screen():
     def __init__(self,resolution, max_fps=300, name="Screen", show_fps=True, bg_col=(0,0,0)):
-        self.resolution = resolution
+        self.resolution = resolution if isinstance(resolution, tuple) else (get_monitors()[0].width, get_monitors()[0].height-65) if resolution.upper().replace(" ", "") == "MAX" else (800, 480)
         self.screen = pygame.display.set_mode((self.resolution[0], self.resolution[1]))
         self.clock = pygame.time.Clock()
         self.pixels = numpy.zeros((self.resolution[0], self.resolution[1], 3), dtype=numpy.uint8)
         self.age = 0
         self.ts = self.resolution[0]*self.resolution[1]-1
-        self.rx = resolution[0]
-        self.ry = resolution[1]
+        self.rx = self.resolution[0]
+        self.ry = self.resolution[1]
         self.bg_image = None
         self.bg_col = bg_col
         self.max_fps = max_fps
@@ -121,7 +121,7 @@ class Screen():
                     if self.thickness in [0,1]:
                         Screen.Pixel.draw(s,i,self.color)
                     else:
-                        Screen.circle(self.screen, self.screen.age, self.thickness, i, self.color).draw()
+                        Screen.circle(self.screen, self.screen.age, self.thickness, i, self.color,aliasing=True).draw()
     class animate():
         def ease_mode(ease_mode):
             if ease_mode.upper().replace(" ", "")=="SINE":
@@ -142,7 +142,7 @@ class Screen():
 
                     screen, 
                     [_ for _ in range(t_start, t_end)],
-                    element.p1, 
+                    element.p1 if full else (a*(1-DIGGY)+c*DIGGY,b*(1-DIGGY)+d*DIGGY), 
                     (a*(1-g)+c*g,b*(1-g)+d*g), 
                     element.color,
                     element.thickness
@@ -219,13 +219,13 @@ class Screen():
             self.clock_step(self.max_fps)
 
 
-s = Screen(resolution=(1920,1080),max_fps=60, bg_col=(0,0,0), show_fps=True)
+s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True)
 
 L = []
-for i in range(10):
-    L.append(Screen.circle(s,random.randrange(0,300),random.randrange(0,100),s.random_pixel(),(255,0,0),aliasing=True))
+for i in range(5):
+    L.append(Screen.line(s,0,(100*i,0),(20*i+300,500),(155+20*i,255-20*i,0),5))
 
 def guh():
-    for i in L:
-        i.draw()
+    for i in range(len(L)):
+        Screen.animate.animate(s,L[i],L[i].age[0] + i*20,L[i].age[0]+100 + i*20)
 s.run(guh)
