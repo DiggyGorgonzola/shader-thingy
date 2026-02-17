@@ -1,10 +1,8 @@
 import math, pygame, numpy,random,os,time
 from screeninfo import get_monitors
 pygame.init()
-for m in get_monitors():
-    print(m.width)
 class Screen():
-    def __init__(self,resolution, max_fps=300, name="Screen", show_fps=True, bg_col=(0,0,0)):
+    def __init__(self,resolution, max_fps=300, name="Screen", show_fps=True, bg_col=(0,0,0), clear_on_flip=False):
         self.resolution = resolution if isinstance(resolution, tuple) else (get_monitors()[0].width, get_monitors()[0].height-65) if resolution.upper().replace(" ", "") == "MAX" else (800, 480)
         self.screen = pygame.display.set_mode((self.resolution[0], self.resolution[1]))
         self.clock = pygame.time.Clock()
@@ -20,6 +18,7 @@ class Screen():
         self.elements = []
         self.show_fps = show_fps
         self.Arial = pygame.font.SysFont('Arial', 15)
+        self.clear_on_flip = clear_on_flip
         pygame.display.set_caption(self.name)
     def random_pixel(self):
         return (random.randrange(self.rx),random.randrange(self.ry))
@@ -52,6 +51,19 @@ class Screen():
                 y += ys/d
                 p += 2 * dx
                 yield (x, y)
+    class color():
+        r,red = (255,0,0),(255,0,0)
+        o,orange = (255,165,0),(255,165,0)
+        y,yellow = (255,255, 0),(255,255, 0)
+        g,green = (0,255,0),(0,255,0)
+        b,blue = (0,0,255),(0,0,255)
+        p,purple = (165,0,255),(165,0,255)
+        rainbow = [r,o,y,g,b,p]
+        def get_rainbow(i):
+            return (255*(math.sin(2*math.pi*i+math.pi*2/3)+1)/2,
+                    255*(math.sin(2*math.pi*i+math.pi*4/3)+1)/2,
+                    255*(math.sin(2*math.pi*i+math.pi*2)+1)/2,
+                    )
     class Pixel():
         def draw(screen,pos,color):
             x,y = pos
@@ -108,7 +120,7 @@ class Screen():
             b = int(self.color[2] * alpha + bg[2] * (1 - alpha))
             return (r,g,b)
     class line():
-        def __init__(self, screen, age, p1,p2, color, thickness):
+        def __init__(self,screen, age, p1,p2, color, thickness=0):
             self.screen = screen
             self.age = age if isinstance(age, list) else [age]
             self.p1, self.p2 = p1, p2
@@ -122,6 +134,22 @@ class Screen():
                         Screen.Pixel.draw(s,i,self.color)
                     else:
                         Screen.circle(self.screen, self.screen.age, self.thickness, i, self.color,aliasing=True).draw()
+    class polygon():
+        def __init__(self,screen,age,center,radius,sides,color,thickness=0,angle=0):
+            self.screen = screen
+            self.age = age if isinstance(age, list) else [age]
+            self.center = center
+            self.color, self.thickness = color, thickness
+            self.radius = radius
+            self.sides = sides
+            self.angle = angle
+            screen.elements.append(self)
+        def draw(self):
+            if self.screen.age in self.age:
+                for i in range(self.sides):
+                    p1 = (self.center[0] + self.radius*math.cos(i/self.sides * 2 * math.pi+self.angle),self.center[1] + self.radius*math.sin(i/self.sides * 2 * math.pi+self.angle))
+                    p2 = (self.center[0] + self.radius*math.cos((i+1)/self.sides * 2 * math.pi+self.angle),self.center[1] + self.radius*math.sin((i+1)/self.sides * 2 * math.pi+self.angle))
+                    Screen.line(self.screen, self.age,p1, p2, self.color, self.thickness).draw()
     class animate():
         def ease_mode(ease_mode):
             if ease_mode.upper().replace(" ", "")=="SINE":
@@ -147,7 +175,29 @@ class Screen():
                     element.color,
                     element.thickness
                     ).draw()
+            if element.__class__ == Screen.polygon:
+                clamp = lambda time:0 if time == t_start else 0 if (time - t_start) / (t_end - t_start) < 0 else 1 if (time - t_start) / (t_end - t_start) > 1 else (time - t_start) / (t_end - t_start)
+                g = Screen.animate.ease_mode(ease)(clamp(screen.age))
+                t_start,t_end = t_start[0] if isinstance(t_start, list) else t_start,t_end[0] if isinstance(t_end, list) else t_end
+                dg = .1
+                for i in range(int(g*element.sides)):
+                    p1 = (element.center[0] + element.radius*math.cos(i/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin(i/element.sides * 2 * math.pi))
+                    p2 = (element.center[0] + element.radius*math.cos((i+1)/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin((i+1)/element.sides * 2 * math.pi))
+                    Screen.line(element.screen, [_ for _ in range(t_start, t_end)],p1, p2, element.color, element.thickness).draw()
+                
 
+                a,b = (element.center[0] + element.radius*math.cos(int(g*element.sides)/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin(int(g*element.sides)/element.sides * 2 * math.pi))
+                c,d = (element.center[0] + element.radius*math.cos((int(g*element.sides)+1)/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin((int(g*element.sides)+1)/element.sides * 2 * math.pi))
+                DIGGY = (g*element.sides%1)-dg
+                Screen.line(
+
+                    screen, 
+                    [_ for _ in range(t_start, t_end)],
+                    (a,b) if full else (a*(1-DIGGY)+c*DIGGY,b*(1-DIGGY)+d*DIGGY), 
+                    (a*(1-(g*element.sides%1))+c*(g*element.sides%1),b*(1-(g*element.sides%1))+d*(g*element.sides%1)), 
+                    element.color,
+                    element.thickness
+                    ).draw()
         def interpolate(screen, p1, p2, t_start, t_end, ease="SINE"):
             a,b = p1
             c,d = p2
@@ -160,7 +210,8 @@ class Screen():
 
     def set_bg_image(self, img):
         self.bg_image = pygame.transform.scale(pygame.image.load(img), self.resolution)
-    def set_bg(self, r,g,b):
+    def set_bg(self, col):
+        r,g,b=col
         self.pixels[:, :, 0] = r
         self.pixels[:, :, 1] = g
         self.pixels[:, :, 2] = b
@@ -206,10 +257,13 @@ class Screen():
 
     def run(self, function=lambda: None, *fargs, **fkargs):
         while all([event.type != pygame.QUIT for event in pygame.event.get()]):
+
             if self.bg_image:
                 self.screen.blit(self.bg_image, (0,0))
                 self.pixels = pygame.surfarray.array3d(self.bg_image).copy()
                 self.bg_image = None
+            if self.clear_on_flip:
+                self.set_bg(self.bg_col)
             function(*fargs, **fkargs)
             pygame.surfarray.blit_array(self.screen, self.pixels)
             if self.show_fps:
@@ -219,13 +273,10 @@ class Screen():
             self.clock_step(self.max_fps)
 
 
-s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True)
+s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True,clear_on_flip=False)
 
-L = []
-for i in range(5):
-    L.append(Screen.line(s,0,(100*i,0),(20*i+300,500),(155+20*i,255-20*i,0),5))
-
+x = [s.random_pixel() for _ in range(20)]
 def guh():
-    for i in range(len(L)):
-        Screen.animate.animate(s,L[i],L[i].age[0] + i*20,L[i].age[0]+100 + i*20)
+    for i in range(3,4):
+        Screen.animate.animate(s,Screen.polygon(s,[_ for _ in range(500)],x[i],40,i+1,Screen.color.get_rainbow(i/20),3,angle=s.age),0,50, full=True)
 s.run(guh)
