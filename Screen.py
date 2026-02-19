@@ -241,7 +241,7 @@ class Screen():
             print(x_prime,y_prime)
             return (x_prime+self.screen.rx/2,y_prime+self.screen.ry/2)
         def draw(self, camera):
-            Screen.circle(self.screen, 0, 4, self.project(camera),self.color).draw()
+            Screen.circle(self.screen, self.age, 4, self.project(camera),self.color).draw()
     def clock_step(self, step):
         self.age += 1
         self.clock.tick(step)
@@ -315,7 +315,6 @@ s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True,clear_on_f
 A = Screen.point3(s, [_ for _ in range(1000)], pos3=(0.01,1000,0.01))
 
 def guh():
-    A = Screen.point3(s, s.age, pos3=(0.01,1000,0.01))
     cam = Screen.camera3(pos3=(-1000,1000,-1000),vec3=(s.age/1000000,0,0))
     A.draw(cam)
 s.run(guh)
