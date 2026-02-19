@@ -311,10 +311,10 @@ class Screen():
             self.clock_step(self.max_fps)
 
 
-s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True,clear_on_flip=False)
+s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
 A = Screen.point3(s, [_ for _ in range(1000)], pos3=(0.01,1000,0.01))
 
 def guh():
-    cam = Screen.camera3(pos3=(-1000,1000,-1000),vec3=(s.age/1000000,0,0))
+    cam = Screen.camera3(pos3=(-1000+s.age/1000,1000,-1000),vec3=(s.age,0,0))
     A.draw(cam)
 s.run(guh)
