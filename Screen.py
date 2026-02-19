@@ -58,6 +58,9 @@ class Screen():
         g,green = (0,255,0),(0,255,0)
         b,blue = (0,0,255),(0,0,255)
         p,purple = (165,0,255),(165,0,255)
+        w,white = (255,255,255),(255,255,255)
+        g,grey,gray = (165,165,165),(165,165,165),(165,165,165)
+        black = (0,0,0)
         rainbow = [r,o,y,g,b,p]
         def get_rainbow(i):
             return (255*(math.sin(2*math.pi*i+math.pi*2/3)+1)/2,
@@ -129,7 +132,7 @@ class Screen():
             screen.elements.append(self)
         def draw(self):
             if self.screen.age in self.age:
-                for i in list(Screen.bresenham_line(self.p1, self.p2, self.thickness)):
+                for i in list(Screen.bresenham_line(self.p1, self.p2, self.thickness+1)):
                     if self.thickness in [0,1]:
                         Screen.Pixel.draw(s,i,self.color)
                     else:
@@ -204,6 +207,41 @@ class Screen():
             clamp = lambda time:0 if time == t_start else 0 if (time - t_start) / (t_end - t_start) < 0 else 1 if (time - t_start) / (t_end - t_start) > 1 else (time - t_start) / (t_end - t_start)
             g = Screen.animate.ease_mode(ease)(clamp(screen.age))
             return (a*(1-g)+c*g,b*(1-g)+d*g)
+    class camera3():
+        def __init__(self, pos3=(1,0,0),vec3=(1,0,0), focal_len=(1,1)):
+            self.pos = pos3
+            self.look = vec3
+            self.fl = (focal_len, focal_len) if isinstance(focal_len, (int,float)) else focal_len if isinstance(focal_len, tuple) else (3,3)
+    
+    class point3():
+        def __init__(self, screen, age, pos3=(0,0,0), color=(255,255,255)):
+            self.screen = screen
+            self.age    = age
+            self.pos    = pos3
+            self.color  = color
+        def project(self, camera):
+            x,y,z       = self.pos
+            x_c,y_c,z_c = camera.pos
+            
+            x,y,z       = x-x_c,y-y_c,z-z_c
+            x_l,y_l,z_l = camera.look
+            def pad(x):
+                return .01 if x == 0 else x
+            def cross(a,b):
+                A = a[1]*b[2] - a[2]*b[1]
+                B = a[2]*b[0] - a[0]*b[2]
+                C = a[0]*b[1] - a[1]*b[0]
+                return [A,B,C]
+            cam = cross(
+                [x_l,y_l,z_l],
+                [x,y,z]
+            )
+            x_prime = cam[0]/pad(cam[2]) * camera.fl[0]
+            y_prime = cam[1]/pad(cam[2]) * camera.fl[1]
+            print(x_prime,y_prime)
+            return (x_prime+self.screen.rx/2,y_prime+self.screen.ry/2)
+        def draw(self, camera):
+            Screen.circle(self.screen, 0, 4, self.project(camera),self.color).draw()
     def clock_step(self, step):
         self.age += 1
         self.clock.tick(step)
@@ -274,9 +312,10 @@ class Screen():
 
 
 s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True,clear_on_flip=False)
+A = Screen.point3(s, [_ for _ in range(1000)], pos3=(0.01,1000,0.01))
 
-x = [s.random_pixel() for _ in range(20)]
 def guh():
-    for i in range(3,4):
-        Screen.animate.animate(s,Screen.polygon(s,[_ for _ in range(500)],x[i],40,i+1,Screen.color.get_rainbow(i/20),3,angle=s.age),0,50, full=True)
+    A = Screen.point3(s, s.age, pos3=(0.01,1000,0.01))
+    cam = Screen.camera3(pos3=(-1000,1000,-1000),vec3=(s.age/1000000,0,0))
+    A.draw(cam)
 s.run(guh)
