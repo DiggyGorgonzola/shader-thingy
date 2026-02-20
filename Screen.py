@@ -59,7 +59,7 @@ class Screen():
         b,blue = (0,0,255),(0,0,255)
         p,purple = (165,0,255),(165,0,255)
         w,white = (255,255,255),(255,255,255)
-        g,grey,gray = (165,165,165),(165,165,165),(165,165,165)
+        grey,gray = (165,165,165),(165,165,165)
         black = (0,0,0)
         rainbow = [r,o,y,g,b,p]
         def get_rainbow(i):
@@ -184,13 +184,13 @@ class Screen():
                 t_start,t_end = t_start[0] if isinstance(t_start, list) else t_start,t_end[0] if isinstance(t_end, list) else t_end
                 dg = .1
                 for i in range(int(g*element.sides)):
-                    p1 = (element.center[0] + element.radius*math.cos(i/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin(i/element.sides * 2 * math.pi))
-                    p2 = (element.center[0] + element.radius*math.cos((i+1)/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin((i+1)/element.sides * 2 * math.pi))
+                    p1 = (element.center[0] + element.radius*math.cos(i/element.sides * 2 * math.pi+element.angle),element.center[1] + element.radius*math.sin(i/element.sides * 2 * math.pi+element.angle))
+                    p2 = (element.center[0] + element.radius*math.cos((i+1)/element.sides * 2 * math.pi+element.angle),element.center[1] + element.radius*math.sin((i+1)/element.sides * 2 * math.pi+element.angle))
                     Screen.line(element.screen, [_ for _ in range(t_start, t_end)],p1, p2, element.color, element.thickness).draw()
                 
 
-                a,b = (element.center[0] + element.radius*math.cos(int(g*element.sides)/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin(int(g*element.sides)/element.sides * 2 * math.pi))
-                c,d = (element.center[0] + element.radius*math.cos((int(g*element.sides)+1)/element.sides * 2 * math.pi),element.center[1] + element.radius*math.sin((int(g*element.sides)+1)/element.sides * 2 * math.pi))
+                a,b = (element.center[0] + element.radius*math.cos(int(g*element.sides)/element.sides * 2 * math.pi+element.angle),element.center[1] + element.radius*math.sin(int(g*element.sides)/element.sides * 2 * math.pi+element.angle))
+                c,d = (element.center[0] + element.radius*math.cos((int(g*element.sides)+1)/element.sides * 2 * math.pi+element.angle),element.center[1] + element.radius*math.sin((int(g*element.sides)+1)/element.sides * 2 * math.pi+element.angle))
                 DIGGY = (g*element.sides%1)-dg
                 Screen.line(
 
@@ -208,10 +208,16 @@ class Screen():
             g = Screen.animate.ease_mode(ease)(clamp(screen.age))
             return (a*(1-g)+c*g,b*(1-g)+d*g)
     class camera3():
-        def __init__(self, pos3=(1,0,0),vec3=(1,0,0), focal_len=(1,1)):
-            self.pos = pos3
-            self.look = vec3
-            self.fl = (focal_len, focal_len) if isinstance(focal_len, (int,float)) else focal_len if isinstance(focal_len, tuple) else (3,3)
+        def __init__(self, pos3=(1,0,0),look=(1,0,0), up=(0,1,0), focal_len=(2,2)):
+            def normalize(x):
+                m = math.sqrt(x[0]**2 + x[1]**2 + x[2]**2)
+                if m == 0:
+                    return [0,0,0]
+                return [x[0]/m, x[1]/m, x[2]/m]
+            self.pos  = pos3
+            self.look = normalize([self.pos[i]+look[i] for i in range(3)])
+            self.up   = up
+            self.fl   = (focal_len, focal_len) if isinstance(focal_len, (int,float)) else focal_len if isinstance(focal_len, tuple) else (3,3)
     
     class point3():
         def __init__(self, screen, age, pos3=(0,0,0), color=(255,255,255)):
@@ -221,27 +227,42 @@ class Screen():
             self.color  = color
         def project(self, camera):
             x,y,z       = self.pos
-            x_c,y_c,z_c = camera.pos
             
-            x,y,z       = x-x_c,y-y_c,z-z_c
-            x_l,y_l,z_l = camera.look
-            def pad(x):
-                return .01 if x == 0 else x
+            def normalize(x):
+                m = math.sqrt(x[0]**2 + x[1]**2 + x[2]**2)
+                if m == 0:
+                    return [0,0,0]
+                return [x[0]/m, x[1]/m, x[2]/m]
             def cross(a,b):
                 A = a[1]*b[2] - a[2]*b[1]
                 B = a[2]*b[0] - a[0]*b[2]
                 C = a[0]*b[1] - a[1]*b[0]
                 return [A,B,C]
-            cam = cross(
-                [x_l,y_l,z_l],
-                [x,y,z]
-            )
-            x_prime = cam[0]/pad(cam[2]) * camera.fl[0]
-            y_prime = cam[1]/pad(cam[2]) * camera.fl[1]
-            print(x_prime,y_prime)
+            def dot(a,b):
+                return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+
+            forward = normalize(camera.look)
+            right   = normalize(cross(forward, camera.up))
+            up      = normalize(cross(right, forward))
+
+            rel = [
+                x - camera.pos[0],
+                y - camera.pos[1],
+                z - camera.pos[2]
+            ]
+
+            x_cam = dot(rel, right)
+            y_cam = dot(rel, up)
+            z_cam = dot(rel, forward)
+            cam   = [x_cam, y_cam, z_cam]
+            if z_cam == 0:
+                return None
+            x_prime = cam[0]/cam[2] * camera.fl[0]
+            y_prime = cam[1]/cam[2] * camera.fl[1]
             return (x_prime+self.screen.rx/2,y_prime+self.screen.ry/2)
         def draw(self, camera):
-            Screen.circle(self.screen, self.age, 4, self.project(camera),self.color).draw()
+            if self.project(camera):
+                Screen.Pixel.draw(self.screen, self.project(camera), self.color)
     def clock_step(self, step):
         self.age += 1
         self.clock.tick(step)
@@ -311,10 +332,25 @@ class Screen():
             self.clock_step(self.max_fps)
 
 
-s = Screen(resolution="MAX",max_fps=20, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
-A = Screen.point3(s, [_ for _ in range(1000)], pos3=(0.01,1000,0.01))
+s = Screen(resolution="MAX",max_fps=60, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
+Q = []
+for i in range(10):
+    for j in range(10):
+        Q.append(Screen.point3(s, [_ for _ in range(1000)], pos3=(j,.1,i)))
+Axis = []
+Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(0,0,0),color=Screen.color.w))
+Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(1,0,0),color=Screen.color.r))
+Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(0,1,0),color=Screen.color.g))
+Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(0,0,1),color=Screen.color.b))
+P = []
+P.append(Screen.line(s, [_ for _ in range(10000)],(s.rx/2,0),(s.rx/2,s.ry),Screen.color.r))
+P.append(Screen.line(s, [_ for _ in range(10000)],(0,s.ry/2),(s.rx,s.ry/2),Screen.color.b))
+
 
 def guh():
-    cam = Screen.camera3(pos3=(-1000+s.age/1000,1000,-1000),vec3=(s.age,0,0))
-    A.draw(cam)
+    cam = Screen.camera3(pos3=(-1,s.age/1000,-1),look=(1,-.1,0), focal_len=(s.rx/50,s.ry/50))
+    for i in Q:
+        i.draw(cam)
+    #for i in P:
+        #i.draw()
 s.run(guh)
