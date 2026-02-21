@@ -79,6 +79,37 @@ class Screen():
         def color_at(screen, pos):
             x,y=pos
             return (screen.pixels[x,y,0],screen.pixels[x,y,1],screen.pixels[x,y,2])
+    class triangle():
+        def __init__(self, screen, age, p1, p2, p3, color):
+            self.age = age
+            self.screen = screen
+            self.points = [p1, p2, p3]
+            self.color = color
+        def draw(self):
+            if self.screen.age not in self.age:
+                return
+
+            (x1, y1), (x2, y2), (x3, y3) = self.points
+
+            xmin = int(min(x1, x2, x3))
+            xmax = int(max(x1, x2, x3))
+            ymin = int(min(y1, y2, y3))
+            ymax = int(max(y1, y2, y3))
+
+            # Precompute edge constants
+            def edge(x0, y0, x1, y1, x, y):
+                return (y0 - y1)*x + (x1 - x0)*y + x0*y1 - x1*y0
+
+            for y in range(ymin, ymax):
+                for x in range(xmin, xmax):
+                    w0 = edge(x2, y2, x3, y3, x, y)
+                    w1 = edge(x3, y3, x1, y1, x, y)
+                    w2 = edge(x1, y1, x2, y2, x, y)
+
+                    if (w0 >= 0 and w1 >= 0 and w2 >= 0) or \
+                    (w0 <= 0 and w1 <= 0 and w2 <= 0):
+                        Screen.Pixel.draw(self.screen, (x, y), self.color)
+
     class reset():
         def __init__(self, screen, age):
             age = age if isinstance(age, list) else [age]
@@ -131,12 +162,15 @@ class Screen():
             self.thickness = thickness
             screen.elements.append(self)
         def draw(self):
-            if self.screen.age in self.age:
-                for i in list(Screen.bresenham_line(self.p1, self.p2, self.thickness+1)):
-                    if self.thickness in [0,1]:
-                        Screen.Pixel.draw(s,i,self.color)
-                    else:
-                        Screen.circle(self.screen, self.screen.age, self.thickness, i, self.color,aliasing=True).draw()
+            if self.screen.age not in self.age:
+                return
+            if self.thickness == 0:
+                Screen.triangle(self.screen, self.age, self.p1, self.p2, self.p1, self.color).draw()
+            else:
+                a = (self.p1[0] - self.p2[0])
+                s = (self.p1[1] - self.p2[1]) / (self.p1[0] - self.p2[0]) if a != 0 else 1
+                Screen.triangle(self.screen, self.age, self.p1, self.p2, (self.p1[0] + self.thickness, self.p1[1] + self.thickness*s), self.color).draw()
+                Screen.triangle(self.screen, self.age, self.p2, self.p1, (self.p2[0] + self.thickness, self.p2[1] + self.thickness*s), self.color).draw()
     class polygon():
         def __init__(self,screen,age,center,radius,sides,color,thickness=0,angle=0):
             self.screen = screen
@@ -240,26 +274,25 @@ class Screen():
                 return [A,B,C]
             def dot(a,b):
                 return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
-
-            forward = normalize(camera.look)
-            right   = normalize(cross(forward, camera.up))
-            up      = normalize(cross(right, forward))
-
             rel = [
                 x - camera.pos[0],
                 y - camera.pos[1],
                 z - camera.pos[2]
             ]
-
-            x_cam = dot(rel, right)
-            y_cam = dot(rel, up)
-            z_cam = dot(rel, forward)
+            x_cam = rel[0]
+            y_cam = rel[1]
+            z_cam = rel[2]
             cam   = [x_cam, y_cam, z_cam]
-            if z_cam == 0:
+            #print(cam)
+            if z_cam <= 0:
                 return None
             x_prime = cam[0]/cam[2] * camera.fl[0]
             y_prime = cam[1]/cam[2] * camera.fl[1]
-            return (x_prime+self.screen.rx/2,y_prime+self.screen.ry/2)
+            if x_prime > self.screen.rx/2 or x_prime < -self.screen.rx/2:
+                return None
+            if y_prime > self.screen.ry/2 or y_prime < -self.screen.ry/2:
+                return None
+            return (x_prime+self.screen.rx/2,-y_prime+self.screen.ry/2)
         def draw(self, camera):
             if self.project(camera):
                 Screen.Pixel.draw(self.screen, self.project(camera), self.color)
@@ -333,24 +366,17 @@ class Screen():
 
 
 s = Screen(resolution="MAX",max_fps=60, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
-Q = []
+A = []
 for i in range(10):
-    for j in range(10):
-        Q.append(Screen.point3(s, [_ for _ in range(1000)], pos3=(j,.1,i)))
-Axis = []
-Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(0,0,0),color=Screen.color.w))
-Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(1,0,0),color=Screen.color.r))
-Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(0,1,0),color=Screen.color.g))
-Axis.append(Screen.point3(s,[_ for _ in range(10000)], pos3=(0,0,1),color=Screen.color.b))
-P = []
-P.append(Screen.line(s, [_ for _ in range(10000)],(s.rx/2,0),(s.rx/2,s.ry),Screen.color.r))
-P.append(Screen.line(s, [_ for _ in range(10000)],(0,s.ry/2),(s.rx,s.ry/2),Screen.color.b))
-
-
+    for j in range(20):
+        A.append(Screen.point3(s, [_ for _ in range(10000)], ((j - 10)/10, math.cos(j)/10, i/10), Screen.color.r if j % 2 ==0 else Screen.color.g))
 def guh():
-    cam = Screen.camera3(pos3=(-1,s.age/1000,-1),look=(1,-.1,0), focal_len=(s.rx/50,s.ry/50))
-    for i in Q:
-        i.draw(cam)
-    #for i in P:
-        #i.draw()
+    cam = Screen.camera3((0,5,-3+s.age/100), (0,0,1), (0,1,0), (s.rx/50, s.ry/50))
+    for i in range(len(A)-1):
+        q = A[i]
+        q.pos = (q.pos[0], math.cos((j + s.age/10)/10), q.pos[2])
+        q.draw(cam)
+        if q.project(cam) and A[i+1].project(cam):
+            Screen.line(s, [_ for _ in range(10000)], q.project(cam), A[i+1].project(cam),(255,255,255),1).draw()
+        
 s.run(guh)
