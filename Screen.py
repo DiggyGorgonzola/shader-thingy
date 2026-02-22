@@ -51,6 +51,27 @@ class Screen():
                 y += ys/d
                 p += 2 * dx
                 yield (x, y)
+    def normalize(x):
+        x = numpy.asarray(x)
+        m = numpy.linalg.norm(x)
+        if m == 0:
+            return numpy.zeros_like(x)
+        return x / m
+
+    def vec_subtract(a, b):
+        return numpy.asarray(a) - numpy.asarray(b)
+
+    def vec_add(a, b):
+        return numpy.asarray(a) + numpy.asarray(b)
+
+    def vec_scale(a, s):
+        return numpy.asarray(a) * s
+
+    def cross(a, b):
+        return numpy.cross(a, b)
+
+    def dot(a, b):
+        return numpy.dot(a, b)
     class color():
         r,red = (255,0,0),(255,0,0)
         o,orange = (255,165,0),(255,165,0)
@@ -90,25 +111,40 @@ class Screen():
                 return
 
             (x1, y1), (x2, y2), (x3, y3) = self.points
+            r, g, b = self.color
 
-            xmin = int(min(x1, x2, x3))
-            xmax = int(max(x1, x2, x3))
-            ymin = int(min(y1, y2, y3))
-            ymax = int(max(y1, y2, y3))
+            # Bounding box
+            xmin = max(int(min(x1, x2, x3)), 0)
+            xmax = min(int(max(x1, x2, x3)), self.screen.rx - 1)
+            ymin = max(int(min(y1, y2, y3)), 0)
+            ymax = min(int(max(y1, y2, y3)), self.screen.ry - 1)
 
-            # Precompute edge constants
-            def edge(x0, y0, x1, y1, x, y):
-                return (y0 - y1)*x + (x1 - x0)*y + x0*y1 - x1*y0
+            if xmin > xmax or ymin > ymax:
+                return
 
-            for y in range(ymin, ymax):
-                for x in range(xmin, xmax):
-                    w0 = edge(x2, y2, x3, y3, x, y)
-                    w1 = edge(x3, y3, x1, y1, x, y)
-                    w2 = edge(x1, y1, x2, y2, x, y)
+            # Create grid of pixel coordinates
+            xs = numpy.arange(xmin, xmax + 1)
+            ys = numpy.arange(ymin, ymax + 1)
+            X,Y = numpy.meshgrid(xs, ys)
 
-                    if (w0 >= 0 and w1 >= 0 and w2 >= 0) or \
-                    (w0 <= 0 and w1 <= 0 and w2 <= 0):
-                        Screen.Pixel.draw(self.screen, (x, y), self.color)
+            # Edge functions (vectorized)
+            w0 = (x2 - x1)*(Y - y1) - (y2 - y1)*(X - x1)
+            w1 = (x3 - x2)*(Y - y2) - (y3 - y2)*(X - x2)
+            w2 = (x1 - x3)*(Y - y3) - (y1 - y3)*(X - x3)
+
+            # Triangle orientation
+            area = (x2 - x1)*(y3 - y1) - (y2 - y1)*(x3 - x1)
+
+            if area >= 0:
+                mask = (w0 >= 0) & (w1 >= 0) & (w2 >= 0)
+            else:
+                mask = (w0 <= 0) & (w1 <= 0) & (w2 <= 0)
+
+            region = self.screen.pixels[ymin:ymax+1, xmin:xmax+1]
+
+            region[mask, 0] = r
+            region[mask, 1] = g
+            region[mask, 2] = b
 
     class reset():
         def __init__(self, screen, age):
@@ -164,13 +200,26 @@ class Screen():
         def draw(self):
             if self.screen.age not in self.age:
                 return
-            if self.thickness == 0:
-                Screen.triangle(self.screen, self.age, self.p1, self.p2, self.p1, self.color).draw()
-            else:
-                a = (self.p1[0] - self.p2[0])
-                s = (self.p1[1] - self.p2[1]) / (self.p1[0] - self.p2[0]) if a != 0 else 1
-                Screen.triangle(self.screen, self.age, self.p1, self.p2, (self.p1[0] + self.thickness, self.p1[1] + self.thickness*s), self.color).draw()
-                Screen.triangle(self.screen, self.age, self.p2, self.p1, (self.p2[0] + self.thickness, self.p2[1] + self.thickness*s), self.color).draw()
+
+            # Direction from p1 to p2
+            direction = Screen.vec_subtract(self.p2, self.p1)
+            direction = Screen.normalize(direction)
+
+            # Perpendicular
+            perp = (-direction[1], direction[0])
+
+            # Half thickness offset
+            offset = Screen.vec_scale(perp, self.thickness / 2)
+
+            # Four corners of thick line (quad)
+            p1a = Screen.vec_add(self.p1, offset)
+            p1b = Screen.vec_subtract(self.p1, offset)
+            p2a = Screen.vec_add(self.p2, offset)
+            p2b = Screen.vec_subtract(self.p2, offset)
+
+            # Draw as two triangles
+            Screen.triangle(self.screen, self.age, p1a, p2a, p2b, self.color).draw()
+            Screen.triangle(self.screen, self.age, p1a, p2b, p1b, self.color).draw()
     class polygon():
         def __init__(self,screen,age,center,radius,sides,color,thickness=0,angle=0):
             self.screen = screen
@@ -261,19 +310,6 @@ class Screen():
             self.color  = color
         def project(self, camera):
             x,y,z       = self.pos
-            
-            def normalize(x):
-                m = math.sqrt(x[0]**2 + x[1]**2 + x[2]**2)
-                if m == 0:
-                    return [0,0,0]
-                return [x[0]/m, x[1]/m, x[2]/m]
-            def cross(a,b):
-                A = a[1]*b[2] - a[2]*b[1]
-                B = a[2]*b[0] - a[0]*b[2]
-                C = a[0]*b[1] - a[1]*b[0]
-                return [A,B,C]
-            def dot(a,b):
-                return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
             rel = [
                 x - camera.pos[0],
                 y - camera.pos[1],
@@ -369,14 +405,22 @@ s = Screen(resolution="MAX",max_fps=60, bg_col=(0,0,0), show_fps=True,clear_on_f
 A = []
 for i in range(10):
     for j in range(20):
-        A.append(Screen.point3(s, [_ for _ in range(10000)], ((j - 10)/10, math.cos(j)/10, i/10), Screen.color.r if j % 2 ==0 else Screen.color.g))
+        A.append(Screen.point3(s, [_ for _ in range(10000)], ((j - 10)/10, 0, i/10), Screen.color.r if j % 2 ==0 else Screen.color.g))
 def guh():
-    cam = Screen.camera3((0,5,-3+s.age/100), (0,0,1), (0,1,0), (s.rx/50, s.ry/50))
+    cam = Screen.camera3((0,1,-1+s.age/100), (0,0,1), (0,1,0), (s.rx/50, s.ry/50))
     for i in range(len(A)-1):
         q = A[i]
         q.pos = (q.pos[0], math.cos((j + s.age/10)/10), q.pos[2])
         q.draw(cam)
         if q.project(cam) and A[i+1].project(cam):
             Screen.line(s, [_ for _ in range(10000)], q.project(cam), A[i+1].project(cam),(255,255,255),1).draw()
-        
+
+
+a = s.random_pixel()
+b = s.random_pixel()
+def line_test():
+    Screen.line(s, [_ for _ in range(10000)], a, b, random.choice(Screen.color.rainbow),5).draw()
+
+def triangle_test():
+    Screen.triangle(s, [_ for _ in range(1000)],(200,200), (s.age,300), (220,220), random.choice(Screen.color.rainbow)).draw()
 s.run(guh)
