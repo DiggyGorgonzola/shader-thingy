@@ -122,17 +122,15 @@ class Screen():
             if xmin > xmax or ymin > ymax:
                 return
 
-            # Create grid of pixel coordinates
-            xs = numpy.arange(xmin, xmax + 1)
-            ys = numpy.arange(ymin, ymax + 1)
-            X,Y = numpy.meshgrid(xs, ys)
+            xs = numpy.arange(xmin, xmax+1)
+            ys = numpy.arange(ymin, ymax+1)
+            X, Y = numpy.meshgrid(xs, ys, indexing="ij")
 
-            # Edge functions (vectorized)
             w0 = (x2 - x1)*(Y - y1) - (y2 - y1)*(X - x1)
             w1 = (x3 - x2)*(Y - y2) - (y3 - y2)*(X - x2)
             w2 = (x1 - x3)*(Y - y3) - (y1 - y3)*(X - x3)
 
-            # Triangle orientation
+
             area = (x2 - x1)*(y3 - y1) - (y2 - y1)*(x3 - x1)
 
             if area >= 0:
@@ -140,8 +138,7 @@ class Screen():
             else:
                 mask = (w0 <= 0) & (w1 <= 0) & (w2 <= 0)
 
-            region = self.screen.pixels[ymin:ymax+1, xmin:xmax+1]
-
+            region = self.screen.pixels[xmin:xmax+1, ymin:ymax+1]
             region[mask, 0] = r
             region[mask, 1] = g
             region[mask, 2] = b
@@ -419,7 +416,10 @@ def guh():
 a = s.random_pixel()
 b = s.random_pixel()
 def line_test():
-    Screen.line(s, [_ for _ in range(10000)], a, b, random.choice(Screen.color.rainbow),5).draw()
+    Screen.line(s, [_ for _ in range(100,10000)], a, b, random.choice(Screen.color.rainbow),1).draw()
+    Screen.line(s, [_ for _ in range(200,10000)], s.random_pixel(), s.random_pixel(), random.choice(Screen.color.rainbow),2).draw()
+    Screen.line(s, [_ for _ in range(300,10000)], s.random_pixel(), s.random_pixel(), random.choice(Screen.color.rainbow),2).draw()
+    Screen.line(s, [_ for _ in range(400,10000)], s.random_pixel(), s.random_pixel(), random.choice(Screen.color.rainbow),2).draw()
 
 def triangle_test():
     Screen.triangle(s, [_ for _ in range(1000)],(200,200), (s.age,300), (220,220), random.choice(Screen.color.rainbow)).draw()
