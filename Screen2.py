@@ -1,5 +1,6 @@
 import math, pygame, numpy,random,os,time
 from screeninfo import get_monitors
+from scipy.spatial import Delaunay
 pygame.init()
 class Screen():
     def __init__(self,resolution, max_fps=300, name="Screen", show_fps=True, bg_col=(0,0,0), clear_on_flip=False):
@@ -58,14 +59,15 @@ class Screen():
                     return
 
                 v = numpy.array(self.points)
+                x1, y1 = self.points[0]
+                x2, y2 = self.points[1]
+                x3, y3 = self.points[2]
 
                 # Bounding box
-                xmin = max(int(v.min(axis=0)), 0)
-                xmax = min(int(v.max(axis=0)), self.screen.rx - 1)
-                ymin = max(int(v.min(axis=1)), 0)
-                ymax = min(int(v.max(axis=1)), self.screen.ry - 1)
-
-                #fix
+                xmin = int(max(min(x1,x2,x3), 0))
+                xmax = int(min(max(x1,x2,x3), self.screen.rx - 1))
+                ymin = int(max(min(y1,y2,y3), 0))
+                ymax = int(min(max(y1,y2,y3), self.screen.ry - 1))
                 xs = numpy.arange(xmin, xmax+1)
                 ys = numpy.arange(ymin, ymax+1)
                 X, Y = numpy.meshgrid(xs, ys, indexing="ij")
@@ -80,7 +82,6 @@ class Screen():
                     mask = (w0 >= 0) & (w1 >= 0) & (w2 >= 0)
                 else:
                     mask = (w0 <= 0) & (w1 <= 0) & (w2 <= 0)
-
                 region = self.screen.pixels[xmin:xmax+1, ymin:ymax+1]
                 r, g, b = self.color
                 region[mask, 0] = r
@@ -123,6 +124,9 @@ class Screen():
                 self.color  = color
             def project(self, camera):
                 cam = numpy.subtract(self.pos,camera.pos)
+                if sum([i**2 for i in cam]) > camera.draw_dist:
+                    return None
+                cam = cam @ camera.rot_x @ camera.rot_y @ camera.rot_z
                 #print(cam)
                 if cam[2] <= 0:
                     return None
@@ -131,7 +135,7 @@ class Screen():
                     return None
                 elif abs(b[1]) > self.screen.ry/2:
                     return None
-                return tuple(numpy.add(b, [self.screen.rx/2, self.screen.ry/2]))
+                return tuple(numpy.add(b, [self.screen.rx/2-1, self.screen.ry/2-1]))
             def draw(self, camera):
                 if self.project(camera):
                     X,Y = self.project(camera)
@@ -140,28 +144,52 @@ class Screen():
                     self.screen.pixels[X,Y, 0] = r
                     self.screen.pixels[X,Y, 1] = g
                     self.screen.pixels[X,Y, 2] = b
+        class FloorGrid():
+            def __init__(self, screen, age, size, distancing=1):
+                self.screen = screen
+                self.age = age
+                self.size = size
+                self.distancing = distancing
+            def draw(self, camera):
+                if self.screen.age not in self.age:
+                    return
+                size = self.size
+                for i in range(size):
+                    for j in range(size):
+                        Screen.Shapes.point3(self.screen, self.age, ((i-size/2)*self.distancing, 0, (j-size/2)*self.distancing)).draw(camera)
         class camera3():
-            def __init__(self, pos3=(1,0,0),look=(1,0,0), up=(0,1,0), focal_len=(2,2)):
+            def __init__(self, pos3=(1,0,0),look=(1,0,0), up=(0,1,0), focal_len=(2,2), euler=(0,0,0),draw_dist=500):
                 def normalize(x):
                     m = math.sqrt(x[0]**2 + x[1]**2 + x[2]**2)
                     if m == 0:
                         return [0,0,0]
                     return [x[0]/m, x[1]/m, x[2]/m]
+                self.draw_dist = draw_dist
                 self.pos  = pos3
                 self.look = normalize([self.pos[i]+look[i] for i in range(3)])
                 self.up   = up
+                self.euler = euler
+                cos = math.cos
+                sin = math.sin
+                a,b,c = self.euler[0],self.euler[1],self.euler[2]
+                self.rot_x = numpy.array([[1,0,0],[0,cos(a),-sin(a)],[0,sin(a),cos(a)]])
+                self.rot_y = numpy.array([[cos(b), 0, sin(b)],[0, 1, 0],[-sin(b), 0, cos(b)]])
+                self.rot_z = numpy.array([[cos(c), -sin(c),0], [sin(c), cos(c),0],[0,0,1]])
                 self.fl   = (focal_len, focal_len) if isinstance(focal_len, (int,float)) else focal_len if isinstance(focal_len, tuple) else (3,3)
 s = Screen(resolution="MAX",max_fps=60, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
 A = []
 for i in range(10):
     for j in range(20):
-        A.append(Screen.Shapes.point3(s, [_ for _ in range(10000)], ((j - 10)/10, 0, i/10), (255,0,0) if j % 2 ==0 else (0,255,0)))
+        A.append(Screen.Shapes.point3(s, [_ for _ in range(10000)], ((j - 20)/10, 0, i/10), (255,0,0) if j % 2 ==0 else (0,255,0)))
+#(2*math.cos(s.age/200), 1, 2*math.sin(s.age/200)
 def guh():
-    cam = Screen.Shapes.camera3((0,1,-1+s.age/100), (0,0,1), (0,1,0), (s.rx/50, s.ry/50))
+    cam = Screen.Shapes.camera3((2*math.cos(s.age/200), 3, 2*math.sin(s.age/200)), (0,0,1), (0,1,0), (s.rx/5, s.ry/5), euler=(0,-math.pi/2-s.age/200,0),draw_dist=100)
+    Screen.Shapes.FloorGrid(s, [_ for _ in range(10000)], 100, distancing=1).draw(cam)
     for i in range(len(A)-1):
         q = A[i]
-        q.pos = (q.pos[0], math.cos((i + s.age/10)/10), q.pos[2])
+        q.pos = (q.pos[0], math.cos((i%20 + s.age/10)/10), q.pos[2])
         q.draw(cam)
+
 def triangle_test():
     Screen.Shapes.Triangle(s, [_ for _ in range(1000)],s.random_pixel(), (s.age,300), (220,220), (255,255,255)).draw()
 def line_test():
