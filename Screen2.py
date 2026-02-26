@@ -183,7 +183,7 @@ for i in range(10):
         A.append(Screen.Shapes.point3(s, [_ for _ in range(10000)], ((j - 20)/10, 0, i/10), (255,0,0) if j % 2 ==0 else (0,255,0)))
 #(2*math.cos(s.age/200), 1, 2*math.sin(s.age/200)
 def guh():
-    cam = Screen.Shapes.camera3((6*math.cos(s.age/200), 3, 6*math.sin(s.age/200)), (0,0,1), (0,1,0), (s.rx/5, s.ry/5), euler=(0,-math.pi/2-s.age/200,0),draw_dist=100)
+    cam = Screen.Shapes.camera3((6*math.cos(s.age/200), 1, 6*math.sin(s.age/200)), (0,0,1), (0,1,0), (s.rx/2, s.rx/2), euler=(0,-math.pi/2-s.age/200,0),draw_dist=100)
     Screen.Shapes.FloorGrid(s, [_ for _ in range(10000)], 100, distancing=1).draw(cam)
     for i in range(len(A)-1):
         q = A[i]
