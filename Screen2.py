@@ -19,6 +19,7 @@ class Screen():
         self.show_fps = show_fps
         self.Arial = pygame.font.SysFont('Arial', 15)
         self.clear_on_flip = clear_on_flip
+        self.lineup = []
         pygame.display.set_caption(self.name)
     def random_pixel(self):
         return (random.randrange(0, self.rx-1), random.randrange(0, self.ry-1))
@@ -46,7 +47,95 @@ class Screen():
                 self.screen.blit(self.Arial.render(f"FPS: {round(fps, 2)}, AGE: {self.age}", True, (255,255,255)), (0,0))
             pygame.display.flip()
             self.clock_step(self.max_fps)
+    def render_3d(self, camera):
+        sorted(self.lineup, key=lambda obj: obj.z_order).reverse()
+        for i in self.lineup:
+            i.draw(camera)
+        self.lineup = []
+    def _dist(points, cam):
+        pp = [numpy.subtract(i.pos,cam.pos) for i in points]
+        k = 0
+        for i in pp:
+            k=numpy.add(k, i)
+        k = numpy.divide(k, len(pp))
+        return float(sum([i**2 for i in k]))
+    def _clamp(val, range):
+        return val if range[0] < val < range[1] else range[0] if val < range[0] else range[1]
+    class Color:
+        def random():
+            return tuple([random.randrange(0, 255) for _ in range(3)])
+        RED,R = (255,0,0),(255,0,0)
+        GREEN,G = (0,255,0),(0,255,0)
+        BLUE,B = (0,0,255),(0,0,255)
+        WHITE,W = (255,255,255),(255,255,255)
     class Shapes:
+        class Triangle3():
+            def __init__(self, screen, age, p1, p2, p3, color):
+                self.age = age if isinstance(age, list) else [age] if isinstance(age, int) else [_ for _ in range(99999)]
+                self.screen = screen
+                self.points = [p1, p2, p3]
+                self.color = color
+                self.z_order = 0
+            def add(self, camera):
+                self.z_order = Screen._dist(self.points, camera)
+                self.screen.lineup.append(self)
+            def draw(self, cam):
+                if self.screen.age not in self.age:
+                    return
+
+                x1, y1 = self.points[0].project(cam)
+                x2, y2 = self.points[1].project(cam)
+                x3, y3 = self.points[2].project(cam)
+
+                # Bounding box
+                xmin = max(min(x1, x2, x3), 0)
+                xmax = min(max(x1, x2, x3), self.screen.rx - 1)
+                ymin = max(min(y1, y2, y3), 0)
+                ymax = min(max(y1, y2, y3), self.screen.ry - 1)
+
+                if xmin > xmax or ymin > ymax:
+                    return
+
+                xmin, xmax, ymin, ymax = map(int, (xmin, xmax, ymin, ymax))
+                xs = numpy.arange(xmin, xmax + 1)
+                ys = numpy.arange(ymin, ymax + 1)
+                X = xs[:, None]
+                Y = ys[None, :]
+                w0 = (x2 - x1) * (Y - y1) - (y2 - y1) * (X - x1)
+                w1 = (x3 - x2) * (Y - y2) - (y3 - y2) * (X - x2)
+                w2 = (x1 - x3) * (Y - y3) - (y1 - y3) * (X - x3)
+                iy = [0 < y < self.screen.ry for y in Y[0]]
+                ix = [0 < x < self.screen.rx for x in X]
+
+                area = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1)
+                if area == 0:
+                    return
+                q = 0
+                if area > 0:
+                    mask = (w0 >= q) & (w1 >= q) & (w2 >= q) & iy & ix
+                else:
+                    mask = (w0 <= q) & (w1 <= q) & (w2 <= q) & iy & ix
+
+                region = self.screen.pixels[xmin:xmax+1, ymin:ymax+1]
+
+                if region.size == 0:
+                    return
+                region[mask] = self.color
+        class Polygon():
+            def __init__(self, screen, age, center=(0,0), radius=50, sides=6, color=(255,255,255)):
+                self.age = age if isinstance(age, list) else [age] if isinstance(age, int) else [_ for _ in range(99999)]
+                self.screen = screen
+                self.center = center
+                self.sides = sides
+                self.color = color
+                self.points = [
+                    numpy.add(numpy.multiply((math.cos(i*2*math.pi/self.sides),math.sin(i*2*math.pi/self.sides)),radius),center) for i in range(self.sides) if center is not None
+                ]
+            def draw(self):
+                if len(self.points) > 0:
+                    for i in range(self.sides):
+                        if self.points[i] is not None:
+                            Screen.Shapes.Triangle(self.screen, self.age, self.center, self.points[i],self.points[(i+1)%self.sides],self.color).draw()
         class Triangle():
             def __init__(self, screen, age, p1, p2, p3, color):
                 self.age = age if isinstance(age, list) else [age] if isinstance(age, int) else [_ for _ in range(99999)]
@@ -183,7 +272,7 @@ class Screen():
                     Screen.Shapes.Triangle(self.screen, self.age, p1a, p2a, p2b, self.color).draw()
                     Screen.Shapes.Triangle(self.screen, self.age, p1a, p2b, p1b, self.color).draw()
         class quad3():
-            def __init__(self,screen, age, pos, v1, v2, color):
+            def __init__(self,screen, age, pos=(0,0,0), v1=(0,0,1), v2=(1,0,0), color=(255,255,255), lighting=None):
                 self.screen = screen
                 self.age = age if isinstance(age, list) else [age] if isinstance(age, int) else [_ for _ in range(99999)]
                 self.pos = pos
@@ -196,11 +285,12 @@ class Screen():
                     Screen.Shapes.point3(self.screen, self.age, numpy.add(self.pos, v2), self.color),
                 ]
                 self.color = color
+                self.lighting = lighting
             def TriangleColor(self, v1, v2):
                 pass
-            def draw(self, cam):
-                Screen.Shapes.Triangle(self.screen, self.age, self.points[0].project(cam), self.points[1].project(cam), self.points[2].project(cam),self.color).draw()
-                Screen.Shapes.Triangle(self.screen, self.age, self.points[2].project(cam), self.points[3].project(cam), self.points[0].project(cam),self.color).draw()
+            def add(self, cam):
+                Screen.Shapes.Triangle3(self.screen, self.age, self.points[0], self.points[1], self.points[2],self.color if isinstance(self.color, tuple) else self.color[0] if isinstance(self.color, list) else (255,255,255)).add(cam)
+                Screen.Shapes.Triangle3(self.screen, self.age, self.points[2], self.points[3], self.points[0],self.color if isinstance(self.color, tuple) else self.color[1] if isinstance(self.color, list) else (255,255,255)).add(cam)
 
 
         class FloorGrid():
@@ -297,7 +387,6 @@ class Screen():
 
                 a = self.pitch
                 b = self.yaw
-                c = self.roll
 
                 rot_x = numpy.array([
                     [1,0,0],
@@ -311,13 +400,13 @@ class Screen():
                     [-sin(b),0,cos(b)]
                 ])
 
-                rot_z = numpy.array([
-                    [cos(c),-sin(c),0],
-                    [sin(c),cos(c),0],
-                    [0,0,1]
-                ])
-
                 self.rotation = rot_y @ rot_x
+            def focus_on(self, point):
+                direction = numpy.subtract(point if isinstance(point, tuple) else point.pos, self.pos)
+                #print(direction)
+                self.yaw = math.atan2(direction[0],direction[2])
+                self.pitch = -math.atan2(direction[1],math.sqrt(direction[0]**2 + direction[2]**2))
+                self.update_rotation()
 
 s = Screen(resolution="MAX",max_fps=60, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
 
@@ -338,8 +427,26 @@ def func():
     Screen.Shapes.Voxel(s, s.age, (-.5,2,-.5),(255,0,0),True).draw(cam)
     Screen.Shapes.Voxel(s, s.age, (-1.5,0,-.5),(255,0,0),True).draw(cam)
     Screen.Shapes.FloorGrid(s, s.age, 5,wire=True).draw(cam)
+C = Screen.Color
+a,b,c,d=C.RED, C.GREEN, C.BLUE, C.WHITE
+CL = Screen._clamp
 def func2():
     camera_rotations()
-    Screen.Shapes.quad3(s, s.age, (0,0,0), (1,cos(s.age/100),0), (0,cos(s.age/100),1), (255,0,0)).draw(cam)
     Screen.Shapes.FloorGrid(s, s.age, 5,wire=True).draw(cam)
-s.run(func2)
+
+    one = Screen.Shapes.quad3(s, s.age, (-2.5,0,-2.5), (5,0,0), (0,0,5))
+    one.color = (CL(Screen._dist(one.points, cam)*5,[0,255]),0,0)
+    two = [Screen.Shapes.quad3(s, s.age, (-2.5,0,1.5), (0,1,0), (0,0,1),C.random()),Screen.Shapes.quad3(s, s.age, (-2.5,0,.5), (0,1,0), (0,0,1),C.random()),Screen.Shapes.quad3(s, s.age, (-2.5,0,-.5), (0,1,0), (0,0,1),C.random()),Screen.Shapes.quad3(s, s.age, (-2.5,0,-1.5), (0,1,0), (0,0,1),C.random()),Screen.Shapes.quad3(s, s.age, (-2.5,0,-2.5), (0,1,0), (0,0,1),C.random())]
+    one.add(cam)
+    for i in two:
+        i.add(cam)
+    s.render_3d(cam)
+
+def func3():
+    cam = Screen.Shapes.camera3((5*sin(s.age/30), 5, 5*-cos(s.age/30)), focal_len=s.rx/5, draw_dist=1000)
+    q = (2.5,0,2.5)
+    cam.focus_on(q)
+    Screen.Shapes.FloorGrid(s, s.age, 20,distancing=.1,wire=True).draw(cam)
+    a=Screen.Shapes.point3(s, s.age, pos3=q)
+    Screen.Shapes.Polygon(s,s.age,center=a.project(cam),radius=10,sides=10,color=(255,0,0)).draw()
+s.run(func3)
