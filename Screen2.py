@@ -85,13 +85,15 @@ class Screen():
                 self.points = [p1, p2, p3]
                 self.color = color
                 self.z_order = 0
+                if not all([isinstance(i, Screen.Shapes.point3) for i in self.points]):
+                    for i in range(len(self.points)):
+                        self.points[i] = Screen.Shapes.point3(self.screen, self.age, self.points[i], self.color)
             def add(self, camera):
                 self.z_order = Screen._dist(self.points, camera)
                 self.screen.lineup.append(self)
             def draw(self, cam):
                 if self.screen.age not in self.age:
                     return
-
                 x1, y1 = self.points[0].project(cam)
                 x2, y2 = self.points[1].project(cam)
                 x3, y3 = self.points[2].project(cam)
@@ -469,7 +471,7 @@ s = Screen(resolution=(500,500),max_fps=60, bg_col=(0,0,0), show_fps=True,clear_
 
 cos = math.cos
 sin = math.sin
-cam = Screen.Shapes.camera3((5*cos(s.age/100),1,5*sin(s.age/100)), focal_len=s.rx/5, draw_dist=1000, user_move=True)
+cam = Screen.Shapes.camera3((5,1,0), focal_len=s.rx/5, draw_dist=1000, user_move=True)
 def camera_rotations():
     global cam
     cam = Screen.Shapes.camera3((5*cos(s.age/100),1,5*sin(s.age/100)), focal_len=s.rx/5, draw_dist=1000)
@@ -487,9 +489,6 @@ def func():
 C = Screen.Color
 a,b,c,d=C.RED, C.GREEN, C.BLUE, C.WHITE
 CL = Screen._clamp
-
-
-
 def func2():
     camera_rotations()
     Screen.Shapes.FloorGrid(s, s.age, 5,wire=True).draw(cam)
@@ -507,9 +506,6 @@ def func3():
     Screen.Shapes.FloorGrid(s, s.age,10,distancing=1,wire=True).draw(cam)
     a=Screen.Shapes.quad3(s,s.age,(.5,0,.5),(1,0,1),(1,0,0),[C.RED, C.BLUE])
     a.add(cam)
-
-
-# sphere!
 def func1():
     cam.update_rotation()
     Screen.Shapes.FloorGrid(s, s.age,10,distancing=1,wire=True).draw(cam)
@@ -518,4 +514,11 @@ def func1():
         A = math.sqrt(abs(1 - (i/Q*2-1)**2))
         for j in range(R):
             Screen.Shapes.point3(s,s.age,(A*cos(2*math.pi*j/R+i),2*i/Q,A*sin(2*math.pi*j/R+i)),Screen.Color.RED).draw(cam)
+def func4():
+    cam.update_rotation()
+    Screen.Shapes.FloorGrid(s, s.age,10,distancing=1,wire=True).draw(cam)
+    Screen.Shapes.quad3(s, s.age, (0, 0, 5), (0, 0, -10), (0, 2, 0), (0,255,0)).add(cam)
+    Screen.Shapes.quad3(s, s.age, (0, 2, 5), (0, 0, -10), (0, 2, 0), (255,255,255)).add(cam)
+    Screen.Shapes.quad3(s, s.age, (0, 4, 5), (0, 0, -10), (0, 2, 0), (100,100,255)).add(cam)
+    Screen.Shapes.Triangle3(s, s.age, (0, 1.5, -2), (0, 5, 0), (0, 1.5, 2), (255,100,200)).add(cam)
 s.run(cam,func1)
