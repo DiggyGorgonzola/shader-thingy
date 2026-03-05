@@ -31,7 +31,7 @@ class Screen():
         self.pixels[:, :, 0] = r
         self.pixels[:, :, 1] = g
         self.pixels[:, :, 2] = b
-    def run(self, function=lambda: None, *fargs, **fkargs):
+    def run(self, camera, function=lambda: None, *fargs, **fkargs):
         while all([event.type != pygame.QUIT for event in pygame.event.get()]):
 
             if self.bg_image:
@@ -41,7 +41,10 @@ class Screen():
             if self.clear_on_flip:
                 self.set_bg(self.bg_col)
             function(*fargs, **fkargs)
+            self.render_3d(camera)
             pygame.surfarray.blit_array(self.screen, self.pixels)
+            if camera.UM:
+                camera.user_move(draw_keys_on_screen=self)
             if self.show_fps:
                 fps = self.clock.get_fps()
                 self.screen.blit(self.Arial.render(f"FPS: {round(fps, 2)}, AGE: {self.age}", True, (255,255,255)), (0,0))
@@ -50,7 +53,13 @@ class Screen():
     def render_3d(self, camera):
         sorted(self.lineup, key=lambda obj: obj.z_order).reverse()
         for i in self.lineup:
-            i.draw(camera)
+            v1 = numpy.subtract(i.points[0].pos,i.points[1].pos)
+            v2 = numpy.subtract(i.points[0].pos,i.points[2].pos)
+            cr = numpy.cross(v1,v2)
+            look = [camera.rotation[0][2],camera.rotation[1][2],camera.rotation[2][2]]
+            d = numpy.dot(cr,camera.pos)
+            if d >= 0:
+                i.draw(camera)
         self.lineup = []
     def _dist(points, cam):
         pp = [numpy.subtract(i.pos,cam.pos) for i in points]
@@ -226,9 +235,9 @@ class Screen():
                 if self.distance > camera.draw_dist:
                     return None
                 cam = cam @ camera.rotation
-                #print(cam)
-                if cam[2] <= 0:
-                    return None
+                near = 0.001
+                if cam[2] < near:
+                    cam[2] = near
                 b = [cam[0]/cam[2] * camera.fl[0], -1 * cam[1]/cam[2] * camera.fl[1]]
                 return numpy.add(b, [self.screen.rx/2-1, self.screen.ry/2-1])
             def draw(self, camera):
@@ -309,14 +318,31 @@ class Screen():
                         for j in range(size-1):
                             Screen.Shapes.point3(self.screen, self.age, ((i-size/2)*self.distancing, 0, (j-size/2)*self.distancing)).draw(camera)
                 if self.wire:
-                    for i in range(size+1):
-                        a = Screen.Shapes.point3(self.screen, self.age, ((i-size/2)*self.distancing, 0, (0-size/2)*self.distancing),(255,255,255))
-                        b = Screen.Shapes.point3(self.screen, self.age, ((i-size/2)*self.distancing, 0, ((size)-size/2)*self.distancing),(255,255,255))
-                        Screen.Shapes.line3(self.screen, self.age, a,b, (255,255,255),3).draw(camera)
-                    for i in range(size+1):
-                        a = Screen.Shapes.point3(self.screen, self.age, ((0-size/2)*self.distancing, 0, (i-size/2)*self.distancing),(255,255,255))
-                        b = Screen.Shapes.point3(self.screen, self.age, (((size)-size/2)*self.distancing, 0, (i-size/2)*self.distancing),(255,255,255))
-                        Screen.Shapes.line3(self.screen, self.age, a,b, (255,255,255),3).draw(camera)
+                    for i in range(size):
+                        for j in range(size):
+                            a = Screen.Shapes.point3(self.screen, self.age, (((i+1)-size/2)*self.distancing, 0, (j-size/2)*self.distancing),(255,255,255))
+                            b = Screen.Shapes.point3(self.screen, self.age, ((i-size/2)*self.distancing, 0, ((j+1)-size/2)*self.distancing),(255,255,255))
+
+                            c = Screen.Shapes.point3(self.screen, self.age, ((i-size/2)*self.distancing, 0, (j-size/2)*self.distancing),(255,255,255))
+
+
+                            Screen.Shapes.line3(self.screen, self.age, c,a, (255,255,255),3).draw(camera)
+                            Screen.Shapes.line3(self.screen, self.age, c,b, (255,255,255),3).draw(camera)
+                    for i in range(size):
+                        a = Screen.Shapes.point3(self.screen, self.age, (((i+1)-size/2)*self.distancing, 0, (size/2)*self.distancing),(255,255,255))
+
+                        c = Screen.Shapes.point3(self.screen, self.age, ((i-size/2)*self.distancing, 0, (size/2)*self.distancing),(255,255,255))
+
+
+                        Screen.Shapes.line3(self.screen, self.age, c,a, (255,255,255),3).draw(camera)
+                    for i in range(size):
+                        a = Screen.Shapes.point3(self.screen, self.age, ((size/2)*self.distancing, 0, ((i+1)-size/2)*self.distancing),(255,255,255))
+
+                        c = Screen.Shapes.point3(self.screen, self.age, ((size/2)*self.distancing, 0, (i-size/2)*self.distancing),(255,255,255))
+
+
+                        Screen.Shapes.line3(self.screen, self.age, c,a, (255,255,255),3).draw(camera)
+
         class Axis():
             def __init__(self, screen, age, size_tuple):
                 self.screen = screen
@@ -373,14 +399,16 @@ class Screen():
                     Screen.Shapes.line3(self.screen, self.age,self.points[6],self.points[7],self.color,3).draw(camera)
                    
         class camera3():
-            def __init__(self, pos3=(0,0,0), focal_len=2, draw_dist=500):
+            def __init__(self, pos3=(0,0,0), focal_len=2, draw_dist=500, user_move=False):
                 self.pos = numpy.array(pos3, dtype=float)
                 self.yaw = 0.0
                 self.pitch = 0.0
                 self.roll = 0.0
+                self.look = [0,0,0]
                 self.draw_dist = draw_dist
                 self.fl = (focal_len, focal_len) if isinstance(focal_len, (int,float)) else focal_len
                 self.rotation = numpy.array([[0,0,0],[0,0,0],[0,0,0]])
+                self.UM = user_move
             def update_rotation(self):
                 cos = math.cos
                 sin = math.sin
@@ -401,18 +429,47 @@ class Screen():
                 ])
 
                 self.rotation = rot_y @ rot_x
+                self.look = [self.rotation[0][2],self.rotation[1][2],self.rotation[2][2]]
             def focus_on(self, point):
                 direction = numpy.subtract(point if isinstance(point, tuple) else point.pos, self.pos)
-                #print(direction)
                 self.yaw = math.atan2(direction[0],direction[2])
                 self.pitch = -math.atan2(direction[1],math.sqrt(direction[0]**2 + direction[2]**2))
                 self.update_rotation()
-
-s = Screen(resolution="MAX",max_fps=60, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
+            def user_move(self, draw_keys_on_screen=False,speed=1):
+                keys = pygame.key.get_pressed()
+                stringy = ""
+                if keys[pygame.K_q]:
+                    self.yaw -= speed/20
+                    stringy += "Q"
+                if keys[pygame.K_e]:
+                    self.yaw += speed/20
+                    stringy += "E"
+                if keys[pygame.K_DOWN]:
+                    self.pitch += speed/20
+                    stringy += "v"
+                if keys[pygame.K_UP]:
+                    self.pitch -= speed/20
+                    stringy += "^"
+                if keys[pygame.K_w]:
+                    self.pos = numpy.add(self.pos, numpy.multiply(self.look,speed/20))
+                    stringy += "W"
+                if keys[pygame.K_a]:
+                    self.pos = numpy.add(self.pos, numpy.multiply(numpy.cross(self.look,(0,1,0)),speed/20))
+                    stringy += "A"
+                if keys[pygame.K_s]:
+                    self.pos = numpy.subtract(self.pos, numpy.multiply(self.look,speed/20))
+                    stringy += "S"
+                if keys[pygame.K_d]:
+                    self.pos = numpy.subtract(self.pos, numpy.multiply(numpy.cross(self.look,(0,1,0)),speed/20))
+                    stringy += "D"
+                if isinstance(draw_keys_on_screen, Screen):
+                    draw_keys_on_screen.screen.blit(draw_keys_on_screen.Arial.render(stringy, True, (255,255,255)),(0,draw_keys_on_screen.ry-50))
+                    draw_keys_on_screen.screen.blit(draw_keys_on_screen.Arial.render(f"POS: {[float(round(i,3)) for i in self.pos]}", True, (255,255,255)),(0,draw_keys_on_screen.ry-30))
+s = Screen(resolution=(500,500),max_fps=60, bg_col=(0,0,0), show_fps=True,clear_on_flip=True)
 
 cos = math.cos
 sin = math.sin
-cam = Screen.Shapes.camera3((5*cos(s.age/100),1,5*sin(s.age/100)), focal_len=s.rx/5, draw_dist=1000)
+cam = Screen.Shapes.camera3((5*cos(s.age/100),1,5*sin(s.age/100)), focal_len=s.rx/5, draw_dist=1000, user_move=True)
 def camera_rotations():
     global cam
     cam = Screen.Shapes.camera3((5*cos(s.age/100),1,5*sin(s.age/100)), focal_len=s.rx/5, draw_dist=1000)
@@ -430,6 +487,9 @@ def func():
 C = Screen.Color
 a,b,c,d=C.RED, C.GREEN, C.BLUE, C.WHITE
 CL = Screen._clamp
+
+
+
 def func2():
     camera_rotations()
     Screen.Shapes.FloorGrid(s, s.age, 5,wire=True).draw(cam)
@@ -443,10 +503,19 @@ def func2():
     s.render_3d(cam)
 
 def func3():
-    cam = Screen.Shapes.camera3((5*sin(s.age/30), 5, 5*-cos(s.age/30)), focal_len=s.rx/5, draw_dist=1000)
-    q = (2.5,0,2.5)
-    cam.focus_on(q)
-    Screen.Shapes.FloorGrid(s, s.age, 20,distancing=.1,wire=True).draw(cam)
-    a=Screen.Shapes.point3(s, s.age, pos3=q)
-    Screen.Shapes.Polygon(s,s.age,center=a.project(cam),radius=10,sides=10,color=(255,0,0)).draw()
-s.run(func3)
+    cam.update_rotation()
+    Screen.Shapes.FloorGrid(s, s.age,10,distancing=1,wire=True).draw(cam)
+    a=Screen.Shapes.quad3(s,s.age,(.5,0,.5),(1,0,1),(1,0,0),[C.RED, C.BLUE])
+    a.add(cam)
+
+
+# sphere!
+def func1():
+    cam.update_rotation()
+    Screen.Shapes.FloorGrid(s, s.age,10,distancing=1,wire=True).draw(cam)
+    Q,R=100,10
+    for i in range(Q):
+        A = math.sqrt(abs(1 - (i/Q*2-1)**2))
+        for j in range(R):
+            Screen.Shapes.point3(s,s.age,(A*cos(2*math.pi*j/R+i),2*i/Q,A*sin(2*math.pi*j/R+i)),Screen.Color.RED).draw(cam)
+s.run(cam,func1)
